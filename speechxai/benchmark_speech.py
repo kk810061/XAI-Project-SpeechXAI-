@@ -10,11 +10,30 @@ from speechxai.utils import pydub_to_np, print_log
 SCORES_PALETTE = sns.diverging_palette(240, 10, as_cmap=True)
 from IPython.display import display
 
-from speechxai.explainers.loo_speech_explainer import LOOSpeechExplainer
-from speechxai.explainers.gradient_speech_explainer import GradientSpeechExplainer
-from speechxai.explainers.lime_speech_explainer import LIMESpeechExplainer
-from speechxai.explainers.paraling_speech_explainer import ParalinguisticSpeechExplainer
-from speechxai.explainers.random_speech_explainer import RandomSpeechExplainer
+try:
+    from speechxai.explainers.loo_speech_explainer import LOOSpeechExplainer
+except ImportError:
+    LOOSpeechExplainer = None
+
+try:
+    from speechxai.explainers.gradient_speech_explainer import GradientSpeechExplainer
+except ImportError:
+    GradientSpeechExplainer = None
+
+try:
+    from speechxai.explainers.lime_speech_explainer import LIMESpeechExplainer
+except ImportError:
+    LIMESpeechExplainer = None
+
+try:
+    from speechxai.explainers.paraling_speech_explainer import ParalinguisticSpeechExplainer
+except ImportError:
+    ParalinguisticSpeechExplainer = None
+
+try:
+    from speechxai.explainers.random_speech_explainer import RandomSpeechExplainer
+except ImportError:
+    RandomSpeechExplainer = None
 
 ## Set seed
 SEED = 42
@@ -63,19 +82,22 @@ class Benchmark:
             )
 
         if explainers is None:
-            # Use the default explainers
-            self.explainers = {
-                "LOO": LOOSpeechExplainer(self.model_helper),
-                "Gradient": GradientSpeechExplainer(
+            self.explainers = {}
+            if LOOSpeechExplainer is not None:
+                self.explainers["LOO"] = LOOSpeechExplainer(self.model_helper)
+            if GradientSpeechExplainer is not None:
+                self.explainers["Gradient"] = GradientSpeechExplainer(
                     self.model_helper, multiply_by_inputs=False
-                ),
-                "GradientXInput": GradientSpeechExplainer(
+                )
+                self.explainers["GradientXInput"] = GradientSpeechExplainer(
                     self.model_helper, multiply_by_inputs=True
-                ),
-                "LIME": LIMESpeechExplainer(self.model_helper),
-                "perturb_paraling": ParalinguisticSpeechExplainer(self.model_helper),
-                "Random": RandomSpeechExplainer(self.model_helper),
-            }
+                )
+            if LIMESpeechExplainer is not None:
+                self.explainers["LIME"] = LIMESpeechExplainer(self.model_helper)
+            if ParalinguisticSpeechExplainer is not None:
+                self.explainers["perturb_paraling"] = ParalinguisticSpeechExplainer(self.model_helper)
+            if RandomSpeechExplainer is not None:
+                self.explainers["Random"] = RandomSpeechExplainer(self.model_helper)
 
     def set_explainers(self, explainers):
         self.explainers = explainers
