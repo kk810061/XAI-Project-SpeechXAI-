@@ -69,6 +69,18 @@ def transcribe_audio(
     if whisperx is None:
         raise ImportError("whisperx is required for automatic transcription. Please install it with: pip install whisperx")
 
+    import sys
+    from unittest.mock import MagicMock
+    if "pyannote" not in sys.modules:
+        try:
+            import pyannote.audio
+        except ImportError:
+            sys.modules["pyannote"] = MagicMock()
+            sys.modules["pyannote.audio"] = MagicMock()
+            sys.modules["pyannote.audio.core"] = MagicMock()
+            sys.modules["pyannote.audio.core.io"] = MagicMock()
+            sys.modules["pyannote.audio.pipelines"] = MagicMock()
+
     ## Load whisperx model
     model_whisperx = whisperx.load_model(
         model_name_whisper,
