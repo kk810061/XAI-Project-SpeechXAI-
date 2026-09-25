@@ -1,5 +1,8 @@
 from pydub import AudioSegment
-import whisperx
+try:
+    import whisperx
+except ImportError:
+    whisperx = None
 import os
 from typing import Dict, List, Union, Tuple
 
@@ -62,6 +65,9 @@ def transcribe_audio(
     Transcribe audio using whisperx,
     and return the text (transcription) and the words with their start and end times.
     """
+
+    if whisperx is None:
+        raise ImportError("whisperx is required for automatic transcription. Please install it with: pip install whisperx")
 
     ## Load whisperx model
     model_whisperx = whisperx.load_model(
