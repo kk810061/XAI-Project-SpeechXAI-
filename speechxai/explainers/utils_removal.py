@@ -71,15 +71,9 @@ def transcribe_audio(
 
     import sys
     from unittest.mock import MagicMock
-    if "pyannote" not in sys.modules:
-        try:
-            import pyannote.audio
-        except ImportError:
-            sys.modules["pyannote"] = MagicMock()
-            sys.modules["pyannote.audio"] = MagicMock()
-            sys.modules["pyannote.audio.core"] = MagicMock()
-            sys.modules["pyannote.audio.core.io"] = MagicMock()
-            sys.modules["pyannote.audio.pipelines"] = MagicMock()
+    sys.modules["whisperx.vads.pyannote"] = MagicMock()
+    for mod in ["pyannote", "pyannote.core", "pyannote.audio", "pyannote.audio.pipelines", "pyannote.audio.pipelines.utils"]:
+        sys.modules[mod] = MagicMock()
 
     ## Load whisperx model
     model_whisperx = whisperx.load_model(
