@@ -63,6 +63,13 @@ class ParalinguisticSpeechExplainer:
 
     def __init__(self, model_helper):
         self.model_helper = model_helper
+        self._cached_audio_path = None
+        self._cached_audio = None
+        self._cached_audio_as = None
+        self._cached_frame_rate = None
+        self._cached_logits_original = None
+        self._cached_logits_by_type = {}
+        self._cached_white_noise = None
 
     def augmentation(
         self,
@@ -165,6 +172,14 @@ class ParalinguisticSpeechExplainer:
 
         return perturbed_audio.squeeze()
 
+    def _get_white_noise(self):
+        if self._cached_white_noise is None:
+            WHITE_NOISE = os.path.join(os.path.dirname(__file__), "white_noise.mp3")
+            noise_as = AudioSegment.from_mp3(WHITE_NOISE)
+            noise, _ = pydub_to_np(noise_as)
+            self._cached_white_noise = noise
+        return self._cached_white_noise
+
     def add_white_noise_torchaudio(self, original_speech, noise_rate):
         """Args:
         original_speech: np.array of shape (1, n_samples)
@@ -172,31 +187,25 @@ class ParalinguisticSpeechExplainer:
         """
 
         import torchaudio.functional as F
-        from copy import deepcopy
         import torch
 
-        WHITE_NOISE = os.path.join(os.path.dirname(__file__), "white_noise.mp3")
+        device = getattr(self.model_helper, "device", torch.device("cpu"))
+        noise = self._get_white_noise()
 
-        noise_as = AudioSegment.from_mp3(WHITE_NOISE)
-        noise, frame_rate = pydub_to_np(noise_as)
+        original_speech_t = torch.as_tensor(
+            original_speech.reshape(1, -1), device=device, dtype=torch.float32
+        )
+        noise_t = torch.as_tensor(
+            noise.reshape(1, -1), device=device, dtype=torch.float32
+        )
 
-        # Reshape and convert to torch tensor
-        original_speech = torch.tensor(original_speech.reshape(1, -1))
-        # Reshape and convert to torch tensor
-        noise = torch.tensor(noise.reshape(1, -1))
+        desired_length = original_speech_t.shape[1]
+        repeats = (desired_length // noise_t.shape[1]) + 1
+        noise_eq = noise_t.repeat(1, repeats)[:, :desired_length]
 
-        def extend_noise(noise, desired_length):
-            noise_new = deepcopy(noise)
-            while noise_new.shape[1] < desired_length:
-                noise_new = torch.concat([noise_new[0], noise[0]]).reshape(1, -1)
-            noise_new = noise_new[:, :desired_length]
-            return noise_new
-
-        noise_eq_length = extend_noise(noise, original_speech.shape[1])
-        snr_dbs = torch.tensor([noise_rate, 10, 3])
-        noisy_speeches = F.add_noise(original_speech, noise_eq_length, snr_dbs)
-        noisy_speech = noisy_speeches[0:1].numpy()
-        return noisy_speech
+        snr_dbs = torch.tensor([noise_rate], device=device, dtype=torch.float32)
+        noisy_speeches = F.add_noise(original_speech_t, noise_eq, snr_dbs)
+        return noisy_speeches[0:1].cpu().numpy()
 
     def change_pitch_torchaudio(self, original_speech, frame_rate, perturbation_value):
         """Args:
@@ -207,13 +216,14 @@ class ParalinguisticSpeechExplainer:
         import torchaudio.functional as F
         import torch
 
-        # Reshape and convert to torch tensor
-        audio_t = torch.tensor(original_speech.reshape(1, -1))
+        device = getattr(self.model_helper, "device", torch.device("cpu"))
+        audio_t = torch.as_tensor(
+            original_speech.reshape(1, -1), device=device, dtype=torch.float32
+        )
         perturbated_audio = F.pitch_shift(
             audio_t, frame_rate, n_steps=perturbation_value
         )
-        perturbated_audio = perturbated_audio.numpy()
-        return perturbated_audio
+        return perturbated_audio.cpu().numpy()
 
     def perturbe_waveform(
         self,
@@ -231,9 +241,13 @@ class ParalinguisticSpeechExplainer:
         - noise
         """
 
-        ## Load audio as pydub.AudioSegment
-        audio_as = AudioSegment.from_wav(audio_path)
-        audio, frame_rate = pydub_to_np(audio_as)
+        ## Load audio as pydub.AudioSegment (use cache if same audio)
+        if self._cached_audio_path == audio_path and self._cached_audio is not None:
+            audio_as = self._cached_audio_as
+            audio, frame_rate = self._cached_audio, self._cached_frame_rate
+        else:
+            audio_as = AudioSegment.from_wav(audio_path)
+            audio, frame_rate = pydub_to_np(audio_as)
 
         ## Perturbate audio
         perturbated_audios = []
@@ -373,24 +387,50 @@ class ParalinguisticSpeechExplainer:
         """
         Computes the importance of each paralinguistic feature in the audio.
         """
+        if self._cached_audio_path != audio_path:
+            self._cached_audio_path = audio_path
+            self._cached_audio_as = AudioSegment.from_wav(audio_path)
+            self._cached_audio, self._cached_frame_rate = pydub_to_np(self._cached_audio_as)
+            self._cached_logits_original = self.model_helper.predict([self._cached_audio.squeeze()])
+            self._cached_logits_by_type = {}
 
-        modified_audios = self.perturbe_waveform(
-            audio_path,
-            perturbation_type,
-            verbose=verbose,
-            verbose_target=verbose_target,
-        )
-
-        ## Get logits for each class
-
-        logits_modified = self.model_helper.predict(modified_audios)
-
-        audio = pydub_to_np(AudioSegment.from_wav(audio_path))[0]
-
-        logits_original = self.model_helper.predict([audio])
-
-        # Check if single label or multilabel scenario as for FSC
+        logits_original = self._cached_logits_original
         n_labels = self.model_helper.n_labels
+
+        if (
+            perturbation_type == "pitch shifting down"
+            and "pitch shifting" in self._cached_logits_by_type
+        ):
+            cached = self._cached_logits_by_type["pitch shifting"]
+            logits_modified = [l[:10] for l in cached] if n_labels > 1 else cached[:10]
+        elif (
+            perturbation_type == "pitch shifting up"
+            and "pitch shifting" in self._cached_logits_by_type
+        ):
+            cached = self._cached_logits_by_type["pitch shifting"]
+            logits_modified = [l[11:] for l in cached] if n_labels > 1 else cached[11:]
+        elif (
+            perturbation_type == "time stretching down"
+            and "time stretching" in self._cached_logits_by_type
+        ):
+            cached = self._cached_logits_by_type["time stretching"]
+            logits_modified = [l[:9] for l in cached] if n_labels > 1 else cached[:9]
+        elif (
+            perturbation_type == "time stretching up"
+            and "time stretching" in self._cached_logits_by_type
+        ):
+            cached = self._cached_logits_by_type["time stretching"]
+            logits_modified = [l[9:] for l in cached] if n_labels > 1 else cached[9:]
+        else:
+            modified_audios = self.perturbe_waveform(
+                audio_path,
+                perturbation_type,
+                verbose=verbose,
+                verbose_target=verbose_target,
+            )
+            logits_modified = self.model_helper.predict(modified_audios)
+            if perturbation_type in ["pitch shifting", "time stretching"]:
+                self._cached_logits_by_type[perturbation_type] = logits_modified
 
         # TODO
         if target_class is not None:
