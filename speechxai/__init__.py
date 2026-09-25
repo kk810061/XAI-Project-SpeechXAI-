@@ -13,9 +13,20 @@ except ImportError:
     pass
 
 # Explainers
-from .explainers.paraling_speech_explainer import ParalinguisticSpeechExplainer
-from .explainers.loo_speech_explainer import LOOSpeechExplainer
-from .explainers.explanation_speech import ExplanationSpeech
+try:
+    from .explainers.paraling_speech_explainer import ParalinguisticSpeechExplainer
+except ImportError:
+    pass
+
+try:
+    from .explainers.loo_speech_explainer import LOOSpeechExplainer
+except ImportError:
+    pass
+
+try:
+    from .explainers.explanation_speech import ExplanationSpeech
+except ImportError:
+    pass
 
 # Model Helpers
 from .model_helpers.model_helper_er import ModelHelperER
