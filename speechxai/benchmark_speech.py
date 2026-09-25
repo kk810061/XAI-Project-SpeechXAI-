@@ -189,6 +189,8 @@ class Benchmark:
         self,
         explanations,
         axis=1,  # append the scores to the columns
+        decimals=None,
+        **kwargs,
     ) -> pd.DataFrame:
         """
         Args:
@@ -245,6 +247,8 @@ class Benchmark:
                 if self.model_helper.n_labels > 1  # multilabel
                 else [target_class_names]  # single label
             )
+        if decimals is not None:
+            importance_df = importance_df.round(decimals)
         return importance_df
 
     def show_table(self, explanations, apply_style: bool = True, decimals=4):
