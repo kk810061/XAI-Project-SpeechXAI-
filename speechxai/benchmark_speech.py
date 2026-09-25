@@ -3,11 +3,11 @@ from typing import Dict, List, Union, Tuple
 from pydub import AudioSegment
 import pandas as pd
 import torch
-import seaborn as sns
-from speechxai.explainers.explanation_speech import ExplanationSpeech
-from speechxai.utils import pydub_to_np, print_log
-
-SCORES_PALETTE = sns.diverging_palette(240, 10, as_cmap=True)
+try:
+    import seaborn as sns
+    SCORES_PALETTE = sns.diverging_palette(240, 10, as_cmap=True)
+except Exception:
+    SCORES_PALETTE = "coolwarm"
 from IPython.display import display
 
 try:
