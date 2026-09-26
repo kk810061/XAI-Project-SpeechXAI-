@@ -53,6 +53,10 @@ def remove_specified_words(audio, words, removal_type: str = "nothing"):
     return audio_removed
 
 
+_CACHED_WHISPER_MODELS = {}
+_CACHED_ALIGN_MODELS = {}
+
+
 def transcribe_audio(
     audio_path: str,
     device: str = "cuda",
@@ -71,25 +75,33 @@ def transcribe_audio(
 
     import sys
     from unittest.mock import MagicMock
-    sys.modules["whisperx.vads.pyannote"] = MagicMock()
-    for mod in ["pyannote", "pyannote.core", "pyannote.audio", "pyannote.audio.pipelines", "pyannote.audio.pipelines.utils"]:
-        sys.modules[mod] = MagicMock()
+    if "whisperx.vads.pyannote" not in sys.modules or not isinstance(sys.modules.get("whisperx.vads.pyannote"), MagicMock):
+        sys.modules["whisperx.vads.pyannote"] = MagicMock()
+        for mod in ["pyannote", "pyannote.core", "pyannote.audio", "pyannote.audio.pipelines", "pyannote.audio.pipelines.utils"]:
+            sys.modules[mod] = MagicMock()
 
-    ## Load whisperx model
-    model_whisperx = whisperx.load_model(
-        model_name_whisper,
-        device,
-        compute_type=compute_type,
-        language=language,
-        vad_method="silero",
-    )
+    global _CACHED_WHISPER_MODELS, _CACHED_ALIGN_MODELS
+    whisper_key = (model_name_whisper, device, compute_type, language)
+    if whisper_key not in _CACHED_WHISPER_MODELS:
+        _CACHED_WHISPER_MODELS[whisper_key] = whisperx.load_model(
+            model_name_whisper,
+            device,
+            compute_type=compute_type,
+            language=language,
+            vad_method="silero",
+        )
+    model_whisperx = _CACHED_WHISPER_MODELS[whisper_key]
 
     ## Transcribe audio
     audio = whisperx.load_audio(audio_path)
     result = model_whisperx.transcribe(audio, batch_size=batch_size)
-    model_a, metadata = whisperx.load_align_model(
-        language_code=result["language"], device=device
-    )
+
+    align_key = (result["language"], device)
+    if align_key not in _CACHED_ALIGN_MODELS:
+        _CACHED_ALIGN_MODELS[align_key] = whisperx.load_align_model(
+            language_code=result["language"], device=device
+        )
+    model_a, metadata = _CACHED_ALIGN_MODELS[align_key]
 
     ## Align timestamps
     result = whisperx.align(
