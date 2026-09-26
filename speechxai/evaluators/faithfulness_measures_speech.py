@@ -233,11 +233,10 @@ class AOPC_Comprehensiveness_Evaluation_Speech:
                 removal_importance = original_prob - modified_prob
                 removal_importances.append(removal_importance)
 
-            if removal_importances == []:
-                return EvaluationSpeech(self.SHORT_NAME, 0, target)
-
-            #  compute AOPC comprehensiveness
-            aopc_comprehesiveness = _compute_aopc(removal_importances)
+            if len(removal_importances) == 0:
+                aopc_comprehesiveness = 0.0
+            else:
+                aopc_comprehesiveness = _compute_aopc(removal_importances)
             aopc_comprehesiveness_multi_label.append(aopc_comprehesiveness)
 
         evaluation_output = EvaluationSpeech(
@@ -418,11 +417,10 @@ class AOPC_Sufficiency_Evaluation_Speech:
                 removal_importance = original_prob - modified_prob
                 removal_importances.append(removal_importance)
 
-            if removal_importances == []:
-                return EvaluationSpeech(self.SHORT_NAME, 0, target)
-
-            #  compute AOPC comprehensiveness
-            aopc_comprehesiveness = _compute_aopc(removal_importances)
+            if len(removal_importances) == 0:
+                aopc_comprehesiveness = 0.0
+            else:
+                aopc_comprehesiveness = _compute_aopc(removal_importances)
             aopc_comprehesiveness_multi_label.append(aopc_comprehesiveness)
 
         evaluation_output = EvaluationSpeech(
